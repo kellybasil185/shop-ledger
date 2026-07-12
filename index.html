@@ -1,0 +1,393 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Shop Ledger</title>
+<style>
+  :root{
+    --bg:#0C0F17;
+    --card:#161B28;
+    --card-2:#11151F;
+    --ink:#F3F6FC;
+    --ink-soft:#C2C8D8;
+    --muted:#7E859B;
+    --line:rgba(255,255,255,.06);
+    --blue:#3A86FF;
+    --cyan:#36D6DC;
+    --pos:#33D69F;
+    --neg:#FF5C72;
+    --violet:#9D8DF1;
+    --accent-grad:linear-gradient(135deg,#3A86FF 0%,#36D6DC 100%);
+    --glow-blue:0 0 0 1px rgba(58,134,255,.10), 0 18px 40px -26px rgba(58,134,255,.55), 0 0 22px -12px rgba(54,214,220,.30);
+    --glow-soft:0 0 0 1px rgba(58,134,255,.07), 0 16px 34px -24px rgba(0,0,0,.85), 0 0 18px -12px rgba(58,134,255,.22);
+    --mono:"SF Mono","Roboto Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 460px at 50% -12%, #1B2A4E 0%, rgba(27,42,78,0) 62%),
+      radial-gradient(700px 380px at 110% 8%, rgba(54,214,220,.10) 0%, rgba(54,214,220,0) 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    font-variant-numeric:tabular-nums;
+    line-height:1.4;
+    min-height:100vh;
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:20px 16px 88px}
+
+  header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .brand h1{font-size:21px;letter-spacing:-.02em;margin:0;font-weight:700}
+  .brand .sub{font-size:12px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-top:2px}
+  .saved{font-size:11px;color:var(--muted);letter-spacing:.03em;opacity:0;transition:opacity .25s;white-space:nowrap}
+  .saved.show{opacity:1}
+  .saved b{color:var(--pos)}
+
+  .tabs{display:flex;gap:4px;background:#10141E;border:1px solid var(--line);border-radius:12px;padding:4px;margin:16px 0 18px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+  .tabs button{flex:1;border:0;background:transparent;font:inherit;font-weight:600;font-size:14px;color:var(--muted);padding:9px 6px;border-radius:9px;cursor:pointer;transition:.18s}
+  .tabs button[aria-selected="true"]{background:#1B2233;color:var(--ink);box-shadow:0 0 0 1px rgba(58,134,255,.28), 0 0 16px -6px rgba(58,134,255,.6)}
+
+  .panel{display:none}
+  .panel.on{display:block}
+
+  .control{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
+  .control label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  input[type=date],input[type=month]{
+    font:inherit;font-weight:600;color:var(--ink);background:var(--card-2);
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;color-scheme:dark;
+  }
+  input[type=date]:focus,input[type=month]:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(58,134,255,.22)}
+
+  .day{
+    background:linear-gradient(165deg,#1A2030 0%,#12151F 100%);
+    border:1px solid var(--line);border-radius:16px;padding:14px 14px 13px;margin-bottom:11px;
+    box-shadow:var(--glow-soft);
+  }
+  .day-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
+  .day-name{font-weight:700;font-size:15px}
+  .day-name small{display:block;font-weight:500;font-size:11px;color:var(--muted);letter-spacing:0;margin-top:1px}
+  .bal-label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);text-align:right;line-height:1;margin-bottom:3px}
+  .bal{font-family:var(--mono);font-size:17px;font-weight:600;color:var(--pos);text-align:right}
+  .bal.neg{color:var(--neg)} .bal.zero{color:var(--muted)}
+
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field span{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+  .f-sale span{color:#5FE0B0} .f-restock span{color:#FF8C98} .f-personal span{color:var(--violet)}
+  .field input{
+    font:inherit;font-family:var(--mono);font-size:15px;color:var(--ink);
+    background:var(--card-2);border:1px solid var(--line);border-radius:10px;
+    padding:11px 11px;width:100%;text-align:right;transition:.15s;
+  }
+  .field input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(58,134,255,.24), 0 0 18px -6px rgba(58,134,255,.7);background:#141A28}
+
+  /* Major restock — weekend, week-level */
+  .major{
+    background:linear-gradient(135deg,rgba(54,214,220,.07),rgba(58,134,255,.05)),#141926;
+    border:1px solid rgba(54,214,220,.18);border-radius:16px;padding:14px;margin-bottom:11px;
+    box-shadow:0 0 0 1px rgba(54,214,220,.10), 0 0 26px -12px rgba(54,214,220,.55);
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+  }
+  .major .lab{font-weight:700;font-size:15px}
+  .major .lab small{display:block;font-weight:500;font-size:11px;color:var(--muted);margin-top:1px}
+  .major input{
+    font:inherit;font-family:var(--mono);font-size:16px;color:var(--ink);text-align:right;
+    background:var(--card-2);border:1px solid rgba(54,214,220,.20);border-radius:10px;padding:11px 12px;
+    width:130px;transition:.15s;
+  }
+  .major input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(54,214,220,.22), 0 0 18px -6px rgba(54,214,220,.8)}
+
+  .receipt{
+    background:linear-gradient(165deg,#1A2233 0%,#12151F 100%);
+    border:1px solid rgba(58,134,255,.16);border-radius:18px;padding:16px 16px 14px;margin-top:16px;
+    box-shadow:var(--glow-blue);
+  }
+  .receipt h2{font-size:11px;letter-spacing:.10em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;font-weight:700}
+  .rrow{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line)}
+  .rrow .k{font-size:14px;color:var(--ink-soft)}
+  .rrow .v{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--ink)}
+  .rrow.net{border-bottom:0;border-top:1px solid rgba(58,134,255,.3);margin-top:8px;padding-top:13px}
+  .rrow.net .k{font-weight:700;color:var(--ink);font-size:15px}
+  .rrow.net .v{font-size:22px}
+  .v.pos{color:var(--pos)} .v.neg{color:var(--neg)} .v.zero{color:var(--muted)} .v.out{color:#FF8C98} .v.self{color:var(--violet)}
+
+  .saved-head{display:flex;align-items:center;justify-content:space-between;margin:24px 2px 10px}
+  .saved-head h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700}
+  .ghost{font:inherit;font-size:12px;font-weight:600;color:var(--cyan);background:transparent;border:0;cursor:pointer;padding:4px 2px}
+  .weeklist{display:flex;flex-direction:column;gap:7px}
+  .week-item{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px;cursor:pointer;transition:.15s}
+  .week-item.active{border-color:rgba(58,134,255,.4);box-shadow:0 0 0 1px rgba(58,134,255,.25), 0 0 18px -8px rgba(58,134,255,.6)}
+  .week-item .wk{font-weight:600;font-size:14px}
+  .week-item .wk small{display:block;color:var(--muted);font-weight:500;font-size:11px;margin-top:1px}
+  .week-item .amt{font-family:var(--mono);font-weight:600;font-size:14px}
+  .week-item .del{font:inherit;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:19px;line-height:1;padding:0 2px}
+  .week-item .del:hover{color:var(--neg)}
+  .empty{color:var(--muted);font-size:13px;padding:16px 2px;text-align:center}
+
+  .mrow{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line);color:var(--ink-soft)}
+  .mrow .mv{font-family:var(--mono)}
+
+  footer{margin-top:28px;text-align:center;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .pill{display:inline-block;font-size:11px;color:var(--ink-soft);background:#141926;border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;transition:.15s}
+  .pill:hover{border-color:rgba(58,134,255,.35);color:var(--ink)}
+  .note{flex-basis:100%;font-size:11px;color:var(--muted);line-height:1.5;margin-top:8px}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Shop Ledger</h1>
+      <div class="sub">Daily · weekly · monthly</div>
+    </div>
+    <div class="saved" id="savedTag">All changes <b>saved</b></div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" id="tabWeek">Week</button>
+    <button role="tab" aria-selected="false" id="tabMonth">Month</button>
+  </div>
+
+  <section class="panel on" id="panelWeek">
+    <div class="control">
+      <label for="weekStart">Week starting (Mon)</label>
+      <input type="date" id="weekStart">
+    </div>
+
+    <div id="days"></div>
+    <div id="majorHost"></div>
+
+    <div class="receipt" id="weekSummary"></div>
+
+    <div class="saved-head">
+      <h2>Saved weeks</h2>
+      <button class="ghost" id="newWeek">+ New week</button>
+    </div>
+    <div class="weeklist" id="weekList"></div>
+  </section>
+
+  <section class="panel" id="panelMonth">
+    <div class="control">
+      <label for="monthPick">Month</label>
+      <input type="month" id="monthPick">
+    </div>
+    <div class="receipt" id="monthSummary"></div>
+    <div class="saved-head"><h2>Weeks this month</h2></div>
+    <div id="monthBreakdown"></div>
+  </section>
+
+  <footer>
+    <span class="pill" id="backupBtn">⤓ Backup (.json)</span>
+    <span class="pill" id="restoreBtn">⤒ Restore</span>
+    <span class="pill" id="exportBtn">CSV</span>
+    <input type="file" id="restoreFile" accept="application/json,.json" hidden>
+    <div class="note" id="storeNote"></div>
+  </footer>
+</div>
+
+<script>
+const CUR = "₵";  // change to "₦" etc.
+const DAYS = [["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],
+              ["thu","Thursday"],["fri","Friday"],["sat","Saturday"]];
+
+/* ---------- storage: Claude preview (window.storage) → phone (localStorage) → memory ---------- */
+const hasWS = typeof window!=="undefined" && window.storage && window.storage.set;
+const ls = (()=>{ try{ const t="__t"; localStorage.setItem(t,"1"); localStorage.removeItem(t); return localStorage; }catch(e){ return null; } })();
+const mem = {};
+const store = {
+  async set(k,v){ const s=JSON.stringify(v);
+    if(hasWS){ try{ return await window.storage.set(k,s); }catch(e){} }
+    else if(ls){ ls.setItem(k,s); return; } mem[k]=s; },
+  async get(k){ let raw=null;
+    if(hasWS){ try{ const r=await window.storage.get(k); raw=r?r.value:null; }catch(e){ raw=null; } }
+    else if(ls){ raw=ls.getItem(k); } else { raw=mem[k]??null; }
+    return raw?JSON.parse(raw):null; },
+  async del(k){ if(hasWS){ try{ await window.storage.delete(k);}catch(e){} } if(ls) ls.removeItem(k); delete mem[k]; },
+  async keys(){
+    if(hasWS){ try{ const r=await window.storage.list("week:"); return (r&&r.keys)||[]; }catch(e){ return []; } }
+    if(ls){ const out=[]; for(let i=0;i<ls.length;i++){ const key=ls.key(i); if(key&&key.indexOf("week:")===0) out.push(key);} return out; }
+    return Object.keys(mem); }
+};
+const storeMode = hasWS ? "preview" : (ls ? "device" : "memory");
+
+/* ---------- helpers ---------- */
+const num = v => { const n=parseFloat(String(v).replace(/[^0-9.\-]/g,"")); return isNaN(n)?0:n; };
+const fmtNum = new Intl.NumberFormat(undefined,{maximumFractionDigits:2});
+const money = n => (n<0?"-":"")+CUR+fmtNum.format(Math.abs(n));
+const signClass = n => n>0?"pos":(n<0?"neg":"zero");
+
+function mondayOf(d){ const x=new Date(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); return x; }
+function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function prettyWeek(s){ const a=new Date(s+"T00:00"),b=new Date(a); b.setDate(b.getDate()+5);
+  const o={month:"short",day:"numeric"}; return a.toLocaleDateString(undefined,o)+" – "+b.toLocaleDateString(undefined,o); }
+
+function emptyWeek(s){ const days={}; DAYS.forEach(([k])=>days[k]={s:"",k:"",r:"",p:""}); return {start:s,days,major:""}; }
+function normalize(w){ if(!w.days) w.days={};
+  DAYS.forEach(([k])=>{ const d=w.days[k]||{}; w.days[k]={s:d.s??"",k:d.k??"",r:d.r??"",p:d.p??""}; });
+  if(w.major===undefined) w.major=""; return w; }
+
+function totals(w){ let S=0,K=0,R=0,P=0;
+  DAYS.forEach(([d])=>{ const x=w.days[d]; S+=num(x.s); K+=num(x.k); R+=num(x.r); P+=num(x.p); });
+  const M=num(w.major); return {sales:S,susu:K,restock:R,personal:P,major:M,net:S-K-R-P-M}; }
+
+/* ---------- state ---------- */
+let weeks={}, current=null;
+const $ = s => document.querySelector(s);
+
+/* ---------- week render ---------- */
+function dayDate(key){ const i=DAYS.findIndex(([k])=>k===key); const dt=new Date(current.start+"T00:00"); dt.setDate(dt.getDate()+i);
+  return dt.toLocaleDateString(undefined,{day:"numeric",month:"short"}); }
+
+function renderDays(){
+  const host=$("#days"); host.innerHTML="";
+  DAYS.forEach(([key,name])=>{
+    const d=current.days[key];
+    const bal=num(d.s)-num(d.k)-num(d.r)-num(d.p);
+    const card=document.createElement("div"); card.className="day";
+    card.innerHTML=`
+      <div class="day-top">
+        <div class="day-name">${name}<small>${dayDate(key)}</small></div>
+        <div><div class="bal-label">Balance</div><div class="bal ${signClass(bal)}" data-bal="${key}">${money(bal)}</div></div>
+      </div>
+      <div class="fields">
+        <label class="field f-sale"><span>Sales</span><input inputmode="decimal" data-d="${key}" data-f="s" value="${d.s}" placeholder="0"></label>
+        <label class="field f-susu"><span>Susu</span><input inputmode="decimal" data-d="${key}" data-f="k" value="${d.k}" placeholder="0"></label>
+        <label class="field f-restock"><span>Restock</span><input inputmode="decimal" data-d="${key}" data-f="r" value="${d.r}" placeholder="0"></label>
+        <label class="field f-personal"><span>Personal</span><input inputmode="decimal" data-d="${key}" data-f="p" value="${d.p}" placeholder="0"></label>
+      </div>`;
+    host.appendChild(card);
+  });
+  host.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",e=>{
+    const {d,f}=e.target.dataset; current.days[d][f]=e.target.value;
+    const dd=current.days[d]; const bal=num(dd.s)-num(dd.k)-num(dd.r)-num(dd.p);
+    const el=host.querySelector(`[data-bal="${d}"]`); el.textContent=money(bal); el.className="bal "+signClass(bal);
+    renderWeekSummary(); queueSave();
+  }));
+}
+
+function renderMajor(){
+  const host=$("#majorHost");
+  host.innerHTML=`
+    <div class="major">
+      <div class="lab">Major restock<small>Weekend big buy (week total)</small></div>
+      <input id="major" inputmode="decimal" value="${current.major}" placeholder="0">
+    </div>`;
+  $("#major").addEventListener("input",e=>{ current.major=e.target.value; renderWeekSummary(); queueSave(); });
+}
+
+function renderWeekSummary(){
+  const t=totals(current);
+  $("#weekSummary").innerHTML=`
+    <h2>Week summary</h2>
+    <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(t.sales)}">${money(t.sales)}</span></div>
+    <div class="rrow"><span class="k">Weekly susu</span><span class="v">${money(t.susu)}</span></div>
+    <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(t.restock)}</span></div>
+    <div class="rrow"><span class="k">Total personal</span><span class="v self">${money(t.personal)}</span></div>
+    <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(t.major)}</span></div>
+    <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(t.net)}">${money(t.net)}</span></div>`;
+}
+
+function renderWeekList(){
+  const host=$("#weekList"); const keys=Object.keys(weeks).sort().reverse();
+  if(!keys.length){ host.innerHTML=`<div class="empty">No saved weeks yet — start typing above.</div>`; return; }
+  host.innerHTML="";
+  keys.forEach(s=>{
+    const t=totals(weeks[s]); const row=document.createElement("div");
+    row.className="week-item"+(s===current.start?" active":"");
+    const col=signClass(t.net); const cssvar = col==="zero"?"muted":col;
+    row.innerHTML=`
+      <div class="wk">${prettyWeek(s)}<small>${money(t.sales)} sales · net</small></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="amt" style="color:var(--${cssvar})">${money(t.net)}</span>
+        <button class="del" title="Delete" data-del="${s}">×</button>
+      </div>`;
+    row.addEventListener("click",e=>{ if(e.target.dataset.del!==undefined) return; loadWeek(s); });
+    row.querySelector(".del").addEventListener("click",async e=>{
+      e.stopPropagation(); if(!confirm("Delete "+prettyWeek(s)+"?")) return;
+      delete weeks[s]; await store.del("week:"+s);
+      if(current.start===s){ current=emptyWeek(iso(mondayOf(new Date()))); renderAllWeekUI(); } else renderWeekList();
+    });
+    host.appendChild(row);
+  });
+}
+
+function renderAllWeekUI(){ $("#weekStart").value=current.start; renderDays(); renderMajor(); renderWeekSummary(); renderWeekList(); }
+
+/* ---------- month ---------- */
+function renderMonth(){
+  const ym=$("#monthPick").value;
+  const list=Object.keys(weeks).filter(k=>k.slice(0,7)===ym).sort();
+  let S=0,K=0,R=0,P=0,M=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;K+=t.susu;R+=t.restock;P+=t.personal;M+=t.major; });
+  const net=S-K-R-P-M;
+  $("#monthSummary").innerHTML=`
+    <h2>Month total · ${list.length} week${list.length===1?"":"s"}</h2>
+    <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
+    <div class="rrow"><span class="k">Total susu</span><span class="v">${money(K)}</span></div>
+    <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
+    <div class="rrow"><span class="k">Total personal</span><span class="v self">${money(P)}</span></div>
+    <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(M)}</span></div>
+    <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
+  const bd=$("#monthBreakdown");
+  if(!list.length){ bd.innerHTML=`<div class="empty">No weeks recorded for this month.</div>`; return; }
+  bd.innerHTML=list.map(k=>{ const t=totals(weeks[k]); const c=signClass(t.net); const cv=c==="zero"?"muted":c;
+    return `<div class="mrow"><span>${prettyWeek(k)}</span><span class="mv" style="color:var(--${cv})">${money(t.net)}</span></div>`; }).join("");
+}
+
+/* ---------- persistence ---------- */
+let saveTimer=null;
+function queueSave(){ flash("Saving…",false); clearTimeout(saveTimer); saveTimer=setTimeout(saveCurrent,450); }
+async function saveCurrent(){ const t=totals(current);
+  weeks[current.start]=JSON.parse(JSON.stringify(current));
+  if(t.sales||t.susu||t.restock||t.personal||t.major) await store.set("week:"+current.start,current);
+  flash("All changes <b>saved</b>",true); renderWeekList(); }
+function flash(html,fade){ const tag=$("#savedTag"); tag.innerHTML=html; tag.classList.add("show"); if(fade) setTimeout(()=>tag.classList.remove("show"),1400); }
+function loadWeek(s){ current=normalize(JSON.parse(JSON.stringify(weeks[s]||emptyWeek(s)))); renderAllWeekUI(); }
+
+/* ---------- events ---------- */
+$("#weekStart").addEventListener("change",e=>loadWeek(iso(mondayOf(new Date(e.target.value+"T00:00")))));
+$("#newWeek").addEventListener("click",()=>{ loadWeek(iso(mondayOf(new Date()))); window.scrollTo({top:0,behavior:"smooth"}); });
+$("#tabWeek").addEventListener("click",()=>switchTab(true));
+$("#tabMonth").addEventListener("click",()=>switchTab(false));
+function switchTab(w){
+  $("#tabWeek").setAttribute("aria-selected",w); $("#tabMonth").setAttribute("aria-selected",!w);
+  $("#panelWeek").classList.toggle("on",w); $("#panelMonth").classList.toggle("on",!w);
+  if(!w){ if(!$("#monthPick").value) $("#monthPick").value=current.start.slice(0,7); renderMonth(); }
+}
+$("#monthPick").addEventListener("change",renderMonth);
+
+$("#exportBtn").addEventListener("click",()=>{
+  const rows=[["Week start","Day","Sale","Susu","Restock","Personal","Major","Balance"]];
+  Object.keys(weeks).sort().forEach(k=>{
+    DAYS.forEach(([d,name])=>{ const x=weeks[k].days[d];
+      rows.push([k,name,num(x.s),num(x.k),num(x.r),num(x.p),"",num(x.s)-num(x.k)-num(x.r)-num(x.p)]); });
+    const t=totals(weeks[k]);
+    rows.push([k,"WEEK TOTAL",t.sales,t.susu,t.restock,t.personal,t.major,t.net]);
+  });
+  download("shop-ledger.csv","text/csv",rows.map(r=>r.join(",")).join("\n"));
+});
+$("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:1,weeks},null,2)));
+$("#restoreBtn").addEventListener("click",()=>$("#restoreFile").click());
+$("#restoreFile").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
+  rd.onload=async()=>{ try{ const data=JSON.parse(rd.result); const incoming=data.weeks||data;
+      let n=0; for(const k in incoming){ const w=normalize(incoming[k]); weeks[w.start]=w; await store.set("week:"+w.start,w); n++; }
+      loadWeek(current.start); alert("Restored "+n+" week(s)."); }catch(err){ alert("Couldn't read that file."); } };
+  rd.readAsText(f); e.target.value="";
+});
+function download(name,type,text){ const b=new Blob([text],{type}); const a=document.createElement("a");
+  a.href=URL.createObjectURL(b); a.download=name; a.click(); }
+
+/* ---------- boot ---------- */
+async function boot(){
+  const keys=await store.keys();
+  for(const fk of keys){ const s=fk.replace(/^week:/,""); const v=await store.get(fk); if(v) weeks[s]=normalize(v); }
+  const mon=iso(mondayOf(new Date()));
+  current=weeks[mon]?normalize(JSON.parse(JSON.stringify(weeks[mon]))):emptyWeek(mon);
+  renderAllWeekUI();
+  $("#storeNote").textContent =
+    storeMode==="preview" ? "Auto-saved in this preview. Download the file (⋯ menu) to run it on your phone — then it saves on the device itself."
+  : storeMode==="device"  ? "Saved on this device automatically. Your weeks stay here even after you close the page."
+  : "Storage isn’t available here, so data resets on reload. Use Backup to keep a copy.";
+}
+boot();
+</script>
