@@ -97,6 +97,9 @@
     width:130px;transition:.15s;
   }
   .major input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(54,214,220,.22), 0 0 18px -6px rgba(54,214,220,.8)}
+  .sent-raph{border-color:rgba(255,184,108,.22);background:linear-gradient(135deg,rgba(255,184,108,.07),rgba(157,141,241,.04)),#141926}
+  .sent-raph input{border-color:rgba(255,184,108,.22)}
+  .sent-raph input:focus{border-color:#FFB86C;box-shadow:0 0 0 3px rgba(255,184,108,.20), 0 0 18px -6px rgba(255,184,108,.7)}
 
   .receipt{
     background:linear-gradient(165deg,#1A2233 0%,#12151F 100%);
@@ -110,7 +113,7 @@
   .rrow.net{border-bottom:0;border-top:1px solid rgba(58,134,255,.3);margin-top:8px;padding-top:13px}
   .rrow.net .k{font-weight:700;color:var(--ink);font-size:15px}
   .rrow.net .v{font-size:22px}
-  .v.pos{color:var(--pos)} .v.neg{color:var(--neg)} .v.zero{color:var(--muted)} .v.out{color:#FF8C98} .v.self{color:var(--violet)}
+  .v.pos{color:var(--pos)} .v.neg{color:var(--neg)} .v.zero{color:var(--muted)} .v.out{color:#FF8C98} .v.self{color:var(--violet)} .v.raph{color:#FFB86C}
 
   .saved-head{display:flex;align-items:center;justify-content:space-between;margin:24px 2px 10px}
   .saved-head h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700}
@@ -254,14 +257,17 @@ function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0
 function prettyWeek(s){ const a=new Date(s+"T00:00"),b=new Date(a); b.setDate(b.getDate()+5);
   const o={month:"short",day:"numeric"}; return a.toLocaleDateString(undefined,o)+" – "+b.toLocaleDateString(undefined,o); }
 
-function emptyWeek(s){ const days={}; DAYS.forEach(([k])=>days[k]={s:"",k:"",r:"",p:""}); return {start:s,days,major:""}; }
+function emptyWeek(s){ const days={}; DAYS.forEach(([k])=>days[k]={s:"",k:"",r:"",p:""}); return {start:s,days,major:"",raph:""}; }
 function normalize(w){ if(!w.days) w.days={};
   DAYS.forEach(([k])=>{ const d=w.days[k]||{}; w.days[k]={s:d.s??"",k:d.k??"",r:d.r??"",p:d.p??""}; });
-  if(w.major===undefined) w.major=""; return w; }
+  if(w.major===undefined) w.major="";
+  if(w.raph===undefined) w.raph="";
+  return w; }
 
 function totals(w){ let S=0,K=0,R=0,P=0;
   DAYS.forEach(([d])=>{ const x=w.days[d]; S+=num(x.s); K+=num(x.k); R+=num(x.r); P+=num(x.p); });
-  const M=num(w.major); return {sales:S,susu:K,restock:R,personal:P,major:M,net:S-K-R-P-M}; }
+  const M=num(w.major),Q=num(w.raph);
+  return {sales:S,susu:K,restock:R,personal:P,major:M,sentToRaph:Q,net:S-K-R-P-M-Q}; }
 
 /* ---------- state ---------- */
 let weeks={}, current=null;
@@ -304,8 +310,13 @@ function renderMajor(){
     <div class="major">
       <div class="lab">Major restock<small>Weekend big buy (week total)</small></div>
       <input id="major" inputmode="decimal" value="${current.major}" placeholder="0">
+    </div>
+    <div class="major sent-raph">
+      <div class="lab">Sent to Raph<small>Money sent this week</small></div>
+      <input id="sentToRaph" inputmode="decimal" value="${current.raph}" placeholder="0">
     </div>`;
   $("#major").addEventListener("input",e=>{ current.major=e.target.value; renderWeekSummary(); queueSave(); });
+  $("#sentToRaph").addEventListener("input",e=>{ current.raph=e.target.value; renderWeekSummary(); queueSave(); });
 }
 
 function renderWeekSummary(){
@@ -317,6 +328,7 @@ function renderWeekSummary(){
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(t.restock)}</span></div>
     <div class="rrow"><span class="k">Total personal</span><span class="v self">${money(t.personal)}</span></div>
     <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(t.major)}</span></div>
+    <div class="rrow"><span class="k">Sent to Raph</span><span class="v raph">${money(t.sentToRaph)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(t.net)}">${money(t.net)}</span></div>`;
 }
 
@@ -353,8 +365,8 @@ function renderAllWeekUI(){ $("#weekStart").value=current.start; renderDays(); r
 function renderMonth(){
   const ym=$("#monthPick").value;
   const list=Object.keys(weeks).filter(k=>k.slice(0,7)===ym).sort();
-  let S=0,K=0,R=0,P=0,M=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;K+=t.susu;R+=t.restock;P+=t.personal;M+=t.major; });
-  const net=S-K-R-P-M;
+  let S=0,K=0,R=0,P=0,M=0,Q=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;K+=t.susu;R+=t.restock;P+=t.personal;M+=t.major;Q+=t.sentToRaph; });
+  const net=S-K-R-P-M-Q;
   $("#monthSummary").innerHTML=`
     <h2>Month total · ${list.length} week${list.length===1?"":"s"}</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
@@ -362,6 +374,7 @@ function renderMonth(){
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
     <div class="rrow"><span class="k">Total personal</span><span class="v self">${money(P)}</span></div>
     <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(M)}</span></div>
+    <div class="rrow"><span class="k">Sent to Raph</span><span class="v raph">${money(Q)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
   const bd=$("#monthBreakdown");
   if(!list.length){ bd.innerHTML=`<div class="empty">No weeks recorded for this month.</div>`; return; }
@@ -388,8 +401,8 @@ function updateYearOptions(){
 function renderYear(){
   const y=$("#yearPick").value;
   const list=Object.keys(weeks).filter(k=>k.slice(0,4)===y).sort();
-  let S=0,K=0,R=0,P=0,M=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;K+=t.susu;R+=t.restock;P+=t.personal;M+=t.major; });
-  const net=S-K-R-P-M;
+  let S=0,K=0,R=0,P=0,M=0,Q=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;K+=t.susu;R+=t.restock;P+=t.personal;M+=t.major;Q+=t.sentToRaph; });
+  const net=S-K-R-P-M-Q;
   $("#yearSummary").innerHTML=`
     <h2>Year total · ${list.length} week${list.length===1?"":"s"}</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
@@ -397,6 +410,7 @@ function renderYear(){
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
     <div class="rrow"><span class="k">Total personal</span><span class="v self">${money(P)}</span></div>
     <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(M)}</span></div>
+    <div class="rrow"><span class="k">Sent to Raph</span><span class="v raph">${money(Q)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
 }
 
@@ -405,7 +419,7 @@ let saveTimer=null;
 function queueSave(){ flash("Saving…",false); clearTimeout(saveTimer); saveTimer=setTimeout(saveCurrent,450); }
 async function saveCurrent(){ const t=totals(current);
   weeks[current.start]=JSON.parse(JSON.stringify(current));
-  if(t.sales||t.susu||t.restock||t.personal||t.major) await store.set("week:"+current.start,current);
+  if(t.sales||t.susu||t.restock||t.personal||t.major||t.sentToRaph) await store.set("week:"+current.start,current);
   flash("All changes <b>saved</b>",true); renderWeekList(); }
 function flash(html,fade){ const tag=$("#savedTag"); tag.innerHTML=html; tag.classList.add("show"); if(fade) setTimeout(()=>tag.classList.remove("show"),1400); }
 function loadWeek(s){ current=normalize(JSON.parse(JSON.stringify(weeks[s]||emptyWeek(s)))); renderAllWeekUI(); }
@@ -446,16 +460,16 @@ document.addEventListener("click", (e) => {
 });
 
 $("#exportBtn").addEventListener("click",()=>{
-  const rows=[["Week start","Day","Sale","Susu","Restock","Personal","Major","Balance"]];
+  const rows=[["Week start","Day","Sale","Susu","Restock","Personal","Major","Sent To Raph","Balance"]];
   Object.keys(weeks).sort().forEach(k=>{
     DAYS.forEach(([d,name])=>{ const x=weeks[k].days[d];
-      rows.push([k,name,num(x.s),num(x.k),num(x.r),num(x.p),"",num(x.s)-num(x.k)-num(x.r)-num(x.p)]); });
+      rows.push([k,name,num(x.s),num(x.k),num(x.r),num(x.p),"","",num(x.s)-num(x.k)-num(x.r)-num(x.p)]); });
     const t=totals(weeks[k]);
-    rows.push([k,"WEEK TOTAL",t.sales,t.susu,t.restock,t.personal,t.major,t.net]);
+    rows.push([k,"WEEK TOTAL",t.sales,t.susu,t.restock,t.personal,t.major,t.sentToRaph,t.net]);
   });
   download("shop-ledger.csv","text/csv",rows.map(r=>r.join(",")).join("\n"));
 });
-$("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:1,weeks},null,2)));
+$("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:2,weeks},null,2)));
 $("#restoreBtn").addEventListener("click",()=>$("#restoreFile").click());
 $("#restoreFile").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
