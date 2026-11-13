@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Shop Ledger</title>
+<title>Shop Ledger V2</title>
 <style>
   :root{
     --bg:#0C0F17;
@@ -97,9 +97,13 @@
     width:130px;transition:.15s;
   }
   .major input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(54,214,220,.22), 0 0 18px -6px rgba(54,214,220,.8)}
-  .sent-raph{border-color:rgba(255,184,108,.22);background:linear-gradient(135deg,rgba(255,184,108,.07),rgba(157,141,241,.04)),#141926}
-  .sent-raph input{border-color:rgba(255,184,108,.22)}
-  .sent-raph input:focus{border-color:#FFB86C;box-shadow:0 0 0 3px rgba(255,184,108,.20), 0 0 18px -6px rgba(255,184,108,.7)}
+  .personal-withdrawals{border-color:rgba(255,184,108,.22);background:linear-gradient(135deg,rgba(255,184,108,.07),rgba(157,141,241,.04)),#141926}
+  .personal-withdrawals input{border-color:rgba(255,184,108,.22)}
+  .personal-withdrawals input:focus{border-color:#FFB86C;box-shadow:0 0 0 3px rgba(255,184,108,.20), 0 0 18px -6px rgba(255,184,108,.7)}
+
+  .funding{border-color:rgba(51,214,159,.24);background:linear-gradient(135deg,rgba(51,214,159,.07),rgba(54,214,220,.03)),#141926}
+  .funding input{border-color:rgba(51,214,159,.25)}
+  .funding input:focus{border-color:var(--pos);box-shadow:0 0 0 3px rgba(51,214,159,.18)}
 
   .receipt{
     background:linear-gradient(165deg,#1A2233 0%,#12151F 100%);
@@ -113,7 +117,7 @@
   .rrow.net{border-bottom:0;border-top:1px solid rgba(58,134,255,.3);margin-top:8px;padding-top:13px}
   .rrow.net .k{font-weight:700;color:var(--ink);font-size:15px}
   .rrow.net .v{font-size:22px}
-  .v.pos{color:var(--pos)} .v.neg{color:var(--neg)} .v.zero{color:var(--muted)} .v.out{color:#FF8C98} .v.self{color:var(--violet)} .v.raph{color:#FFB86C}
+  .v.pos{color:var(--pos)} .v.neg{color:var(--neg)} .v.zero{color:var(--muted)} .v.out{color:#FF8C98} .v.self{color:var(--violet)} .v.withdrawal{color:#FFB86C} .v.funding-in{color:var(--pos)}
 
   .saved-head{display:flex;align-items:center;justify-content:space-between;margin:24px 2px 10px}
   .saved-head h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700}
@@ -153,7 +157,7 @@
 <div class="wrap">
   <header>
     <div class="brand">
-      <h1>Shop Ledger</h1>
+      <h1>Shop Ledger V2</h1>
       <div class="sub">Daily · weekly · monthly</div>
     </div>
     <div class="saved" id="savedTag">All changes <b>saved</b></div>
@@ -225,6 +229,8 @@
 const CUR = "₵";  
 const DAYS = [["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],
               ["thu","Thursday"],["fri","Friday"],["sat","Saturday"]];
+// A new storage namespace starts V2 clean without deleting the earlier local data.
+const STORE_PREFIX = "shop-v2:week:";
 
 /* ---------- storage: Claude preview (window.storage) → phone (localStorage) → memory ---------- */
 const hasWS = typeof window!=="undefined" && window.storage && window.storage.set;
@@ -240,9 +246,9 @@ const store = {
     return raw?JSON.parse(raw):null; },
   async del(k){ if(hasWS){ try{ await window.storage.delete(k);}catch(e){} } if(ls) ls.removeItem(k); delete mem[k]; },
   async keys(){
-    if(hasWS){ try{ const r=await window.storage.list("week:"); return (r&&r.keys)||[]; }catch(e){ return []; } }
-    if(ls){ const out=[]; for(let i=0;i<ls.length;i++){ const key=ls.key(i); if(key&&key.indexOf("week:")===0) out.push(key);} return out; }
-    return Object.keys(mem); }
+    if(hasWS){ try{ const r=await window.storage.list(STORE_PREFIX); return (r&&r.keys)||[]; }catch(e){ return []; } }
+    if(ls){ const out=[]; for(let i=0;i<ls.length;i++){ const key=ls.key(i); if(key&&key.startsWith(STORE_PREFIX)) out.push(key);} return out; }
+    return Object.keys(mem).filter(key=>key.startsWith(STORE_PREFIX)); }
 };
 const storeMode = hasWS ? "preview" : (ls ? "device" : "memory");
 
@@ -257,17 +263,24 @@ function iso(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0
 function prettyWeek(s){ const a=new Date(s+"T00:00"),b=new Date(a); b.setDate(b.getDate()+5);
   const o={month:"short",day:"numeric"}; return a.toLocaleDateString(undefined,o)+" – "+b.toLocaleDateString(undefined,o); }
 
-function emptyWeek(s){ const days={}; DAYS.forEach(([k])=>days[k]={s:"",k:"",r:"",p:""}); return {start:s,days,major:"",raph:""}; }
-function normalize(w){ if(!w.days) w.days={};
-  DAYS.forEach(([k])=>{ const d=w.days[k]||{}; w.days[k]={s:d.s??"",k:d.k??"",r:d.r??"",p:d.p??""}; });
+function emptyWeek(s){
+  const days={}; DAYS.forEach(([k])=>days[k]={s:"",r:"",p:""});
+  return {start:s,days,major:"",withdrawals:"",funding:""};
+}
+function normalize(w){
+  if(!w.days) w.days={};
+  DAYS.forEach(([k])=>{ const d=w.days[k]||{}; w.days[k]={s:d.s??"",r:d.r??"",p:d.p??""}; });
   if(w.major===undefined) w.major="";
-  if(w.raph===undefined) w.raph="";
-  return w; }
-
-function totals(w){ let S=0,K=0,R=0,P=0;
-  DAYS.forEach(([d])=>{ const x=w.days[d]; S+=num(x.s); K+=num(x.k); R+=num(x.r); P+=num(x.p); });
-  const M=num(w.major),Q=num(w.raph);
-  return {sales:S,susu:K,restock:R,personal:P,major:M,sentToRaph:Q,net:S-K-R-P-M-Q}; }
+  if(w.withdrawals===undefined) w.withdrawals="";
+  if(w.funding===undefined) w.funding="";
+  return w;
+}
+function totals(w){
+  let S=0,R=0,P=0;
+  DAYS.forEach(([d])=>{ const x=w.days[d]; S+=num(x.s); R+=num(x.r); P+=num(x.p); });
+  const M=num(w.major), W=num(w.withdrawals), F=num(w.funding);
+  return {sales:S,restock:R,personal:P,major:M,withdrawals:W,funding:F,net:S+F-R-P-M-W};
+}
 
 /* ---------- state ---------- */
 let weeks={}, current=null;
@@ -281,7 +294,7 @@ function renderDays(){
   const host=$("#days"); host.innerHTML="";
   DAYS.forEach(([key,name])=>{
     const d=current.days[key];
-    const bal=num(d.s)-num(d.k)-num(d.r)-num(d.p);
+    const bal=num(d.s)-num(d.r)-num(d.p);
     const card=document.createElement("div"); card.className="day";
     card.innerHTML=`
       <div class="day-top">
@@ -290,7 +303,6 @@ function renderDays(){
       </div>
       <div class="fields">
         <label class="field f-sale"><span>Sales</span><input inputmode="decimal" data-d="${key}" data-f="s" value="${d.s}" placeholder="0"></label>
-        <label class="field f-susu"><span>Susu</span><input inputmode="decimal" data-d="${key}" data-f="k" value="${d.k}" placeholder="0"></label>
         <label class="field f-restock"><span>Restock</span><input inputmode="decimal" data-d="${key}" data-f="r" value="${d.r}" placeholder="0"></label>
         <label class="field f-personal"><span>Personal</span><input inputmode="decimal" data-d="${key}" data-f="p" value="${d.p}" placeholder="0"></label>
       </div>`;
@@ -298,7 +310,7 @@ function renderDays(){
   });
   host.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",e=>{
     const {d,f}=e.target.dataset; current.days[d][f]=e.target.value;
-    const dd=current.days[d]; const bal=num(dd.s)-num(dd.k)-num(dd.r)-num(dd.p);
+    const dd=current.days[d]; const bal=num(dd.s)-num(dd.r)-num(dd.p);
     const el=host.querySelector(`[data-bal="${d}"]`); el.textContent=money(bal); el.className="bal "+signClass(bal);
     renderWeekSummary(); queueSave();
   }));
@@ -312,11 +324,16 @@ function renderMajor(){
       <input id="major" inputmode="decimal" value="${current.major}" placeholder="0">
     </div>
     <div class="major sent-raph">
-      <div class="lab">Sent to Raph<small>Money sent this week</small></div>
-      <input id="sentToRaph" inputmode="decimal" value="${current.raph}" placeholder="0">
+      <div class="lab">Personal withdrawals<small>Weekly owner withdrawals</small></div>
+      <input id="personalWithdrawals" inputmode="decimal" value="${current.withdrawals}" placeholder="0">
+    </div>
+    <div class="major funding">
+      <div class="lab">Funding received<small>Personal capital added this week (not sales)</small></div>
+      <input id="fundingReceived" inputmode="decimal" value="${current.funding}" placeholder="0">
     </div>`;
   $("#major").addEventListener("input",e=>{ current.major=e.target.value; renderWeekSummary(); queueSave(); });
-  $("#sentToRaph").addEventListener("input",e=>{ current.raph=e.target.value; renderWeekSummary(); queueSave(); });
+  $("#personalWithdrawals").addEventListener("input",e=>{ current.withdrawals=e.target.value; renderWeekSummary(); queueSave(); });
+  $("#fundingReceived").addEventListener("input",e=>{ current.funding=e.target.value; renderWeekSummary(); queueSave(); });
 }
 
 function renderWeekSummary(){
@@ -324,11 +341,11 @@ function renderWeekSummary(){
   $("#weekSummary").innerHTML=`
     <h2>Week summary</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(t.sales)}">${money(t.sales)}</span></div>
-    <div class="rrow"><span class="k">Weekly susu</span><span class="v">${money(t.susu)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(t.restock)}</span></div>
     <div class="rrow"><span class="k">Total personal</span><span class="v self">${money(t.personal)}</span></div>
     <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(t.major)}</span></div>
-    <div class="rrow"><span class="k">Sent to Raph</span><span class="v raph">${money(t.sentToRaph)}</span></div>
+    <div class="rrow"><span class="k">Personal withdrawals</span><span class="v withdrawal">${money(t.withdrawals)}</span></div>
+    <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(t.funding)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(t.net)}">${money(t.net)}</span></div>`;
 }
 
@@ -352,7 +369,7 @@ function renderWeekList(){
     row.addEventListener("click",e=>{ if(e.target.dataset.del!==undefined) return; loadWeek(s); });
     row.querySelector(".del").addEventListener("click",async e=>{
       e.stopPropagation(); if(!confirm("Delete "+prettyWeek(s)+"?")) return;
-      delete weeks[s]; await store.del("week:"+s);
+      delete weeks[s]; await store.del(STORE_PREFIX+s);
       if(current.start===s){ current=emptyWeek(iso(mondayOf(new Date()))); renderAllWeekUI(); } else renderWeekList();
     });
     host.appendChild(row);
@@ -365,16 +382,16 @@ function renderAllWeekUI(){ $("#weekStart").value=current.start; renderDays(); r
 function renderMonth(){
   const ym=$("#monthPick").value;
   const list=Object.keys(weeks).filter(k=>k.slice(0,7)===ym).sort();
-  let S=0,K=0,R=0,P=0,M=0,Q=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;K+=t.susu;R+=t.restock;P+=t.personal;M+=t.major;Q+=t.sentToRaph; });
-  const net=S-K-R-P-M-Q;
+  let S=0,R=0,P=0,M=0,W=0,F=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;R+=t.restock;P+=t.personal;M+=t.major;W+=t.withdrawals;F+=t.funding; });
+  const net=S+F-R-P-M-W;
   $("#monthSummary").innerHTML=`
     <h2>Month total · ${list.length} week${list.length===1?"":"s"}</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
-    <div class="rrow"><span class="k">Total susu</span><span class="v">${money(K)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
     <div class="rrow"><span class="k">Total personal</span><span class="v self">${money(P)}</span></div>
     <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(M)}</span></div>
-    <div class="rrow"><span class="k">Sent to Raph</span><span class="v raph">${money(Q)}</span></div>
+    <div class="rrow"><span class="k">Personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
+    <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(F)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
   const bd=$("#monthBreakdown");
   if(!list.length){ bd.innerHTML=`<div class="empty">No weeks recorded for this month.</div>`; return; }
@@ -401,16 +418,16 @@ function updateYearOptions(){
 function renderYear(){
   const y=$("#yearPick").value;
   const list=Object.keys(weeks).filter(k=>k.slice(0,4)===y).sort();
-  let S=0,K=0,R=0,P=0,M=0,Q=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;K+=t.susu;R+=t.restock;P+=t.personal;M+=t.major;Q+=t.sentToRaph; });
-  const net=S-K-R-P-M-Q;
+  let S=0,R=0,P=0,M=0,W=0,F=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;R+=t.restock;P+=t.personal;M+=t.major;W+=t.withdrawals;F+=t.funding; });
+  const net=S+F-R-P-M-W;
   $("#yearSummary").innerHTML=`
     <h2>Year total · ${list.length} week${list.length===1?"":"s"}</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
-    <div class="rrow"><span class="k">Total susu</span><span class="v">${money(K)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
     <div class="rrow"><span class="k">Total personal</span><span class="v self">${money(P)}</span></div>
     <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(M)}</span></div>
-    <div class="rrow"><span class="k">Sent to Raph</span><span class="v raph">${money(Q)}</span></div>
+    <div class="rrow"><span class="k">Personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
+    <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(F)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
 }
 
@@ -419,7 +436,12 @@ let saveTimer=null;
 function queueSave(){ flash("Saving…",false); clearTimeout(saveTimer); saveTimer=setTimeout(saveCurrent,450); }
 async function saveCurrent(){ const t=totals(current);
   weeks[current.start]=JSON.parse(JSON.stringify(current));
-  if(t.sales||t.susu||t.restock||t.personal||t.major||t.sentToRaph) await store.set("week:"+current.start,current);
+  if(t.sales||t.restock||t.personal||t.major||t.withdrawals||t.funding) {
+    await store.set(STORE_PREFIX+current.start,current);
+  } else {
+    delete weeks[current.start];
+    await store.del(STORE_PREFIX+current.start);
+  }
   flash("All changes <b>saved</b>",true); renderWeekList(); }
 function flash(html,fade){ const tag=$("#savedTag"); tag.innerHTML=html; tag.classList.add("show"); if(fade) setTimeout(()=>tag.classList.remove("show"),1400); }
 function loadWeek(s){ current=normalize(JSON.parse(JSON.stringify(weeks[s]||emptyWeek(s)))); renderAllWeekUI(); }
@@ -460,21 +482,25 @@ document.addEventListener("click", (e) => {
 });
 
 $("#exportBtn").addEventListener("click",()=>{
-  const rows=[["Week start","Day","Sale","Susu","Restock","Personal","Major","Sent To Raph","Balance"]];
+  const rows=[["Week start","Day","Sale","Restock","Personal","Major","Personal Withdrawals","Funding Received","Balance"]];
   Object.keys(weeks).sort().forEach(k=>{
     DAYS.forEach(([d,name])=>{ const x=weeks[k].days[d];
-      rows.push([k,name,num(x.s),num(x.k),num(x.r),num(x.p),"","",num(x.s)-num(x.k)-num(x.r)-num(x.p)]); });
+      rows.push([k,name,num(x.s),num(x.r),num(x.p),"","","",num(x.s)-num(x.r)-num(x.p)]); });
     const t=totals(weeks[k]);
-    rows.push([k,"WEEK TOTAL",t.sales,t.susu,t.restock,t.personal,t.major,t.sentToRaph,t.net]);
+    rows.push([k,"WEEK TOTAL",t.sales,t.restock,t.personal,t.major,t.withdrawals,t.funding,t.net]);
   });
   download("shop-ledger.csv","text/csv",rows.map(r=>r.join(",")).join("\n"));
 });
-$("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:2,weeks},null,2)));
+$("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:3,weeks},null,2)));
 $("#restoreBtn").addEventListener("click",()=>$("#restoreFile").click());
 $("#restoreFile").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
-  rd.onload=async()=>{ try{ const data=JSON.parse(rd.result); const incoming=data.weeks||data;
-      let n=0; for(const k in incoming){ const w=normalize(incoming[k]); weeks[w.start]=w; await store.set("week:"+w.start,w); n++; }
+  rd.onload=async()=>{ try{ const data=JSON.parse(rd.result); if(data.v!==3 || !data.weeks || typeof data.weeks!=="object") {
+        alert("This backup uses an older ledger format. V2 starts fresh; keep the old backup as an archive.");
+        return;
+      }
+      const incoming=data.weeks;
+      let n=0; for(const k in incoming){ const w=normalize(incoming[k]); weeks[w.start]=w; await store.set(STORE_PREFIX+w.start,w); n++; }
       loadWeek(current.start); alert("Restored "+n+" week(s)."); }catch(err){ alert("Couldn't read that file."); } };
   rd.readAsText(f); e.target.value="";
 });
@@ -484,7 +510,7 @@ function download(name,type,text){ const b=new Blob([text],{type}); const a=docu
 /* ---------- boot ---------- */
 async function boot(){
   const keys=await store.keys();
-  for(const fk of keys){ const s=fk.replace(/^week:/,""); const v=await store.get(fk); if(v) weeks[s]=normalize(v); }
+  for(const fk of keys){ const s=fk.slice(STORE_PREFIX.length); const v=await store.get(fk); if(v) weeks[s]=normalize(v); }
   const mon=iso(mondayOf(new Date()));
   current=weeks[mon]?normalize(JSON.parse(JSON.stringify(weeks[mon]))):emptyWeek(mon);
   renderAllWeekUI();
