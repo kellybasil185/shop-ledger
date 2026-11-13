@@ -76,6 +76,7 @@
   .field{display:flex;flex-direction:column;gap:4px}
   .field span{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
   .f-sale span{color:#5FE0B0} .f-restock span{color:#FF8C98} .f-personal span{color:var(--violet)}
+  .f-personal{grid-column:1 / -1}
   .field input{
     font:inherit;font-family:var(--mono);font-size:15px;color:var(--ink);
     background:var(--card-2);border:1px solid var(--line);border-radius:10px;
@@ -264,30 +265,28 @@ function prettyWeek(s){ const a=new Date(s+"T00:00"),b=new Date(a); b.setDate(b.
   const o={month:"short",day:"numeric"}; return a.toLocaleDateString(undefined,o)+" – "+b.toLocaleDateString(undefined,o); }
 
 function emptyWeek(s){
-  const days={}; DAYS.forEach(([k])=>days[k]={s:"",r:""});
+  const days={}; DAYS.forEach(([k])=>days[k]={s:"",r:"",p:""});
   return {start:s,days,major:"",withdrawals:"",funding:""};
 }
 function normalize(w){
   if(!w.days) w.days={};
-  // Preserve V2 daily Personal amounts by rolling them into the single weekly withdrawal field.
-  // Removing d.p makes this migration idempotent when the normalized week is saved.
-  let legacyPersonal=0;
+  // Prior V4 withdrawals remain in the weekly field; daily personal entries are independent.
   DAYS.forEach(([k])=>{
     const d=w.days[k]||{};
-    legacyPersonal+=num(d.p);
-    w.days[k]={s:d.s??"",r:d.r??""};
+    w.days[k]={s:d.s??"",r:d.r??"",p:d.p??""};
   });
   if(w.major===undefined) w.major="";
   if(w.withdrawals===undefined) w.withdrawals="";
-  if(legacyPersonal) w.withdrawals=String(num(w.withdrawals)+legacyPersonal);
   if(w.funding===undefined) w.funding="";
   return w;
 }
 function totals(w){
-  let S=0,R=0;
-  DAYS.forEach(([d])=>{ const x=w.days[d]; S+=num(x.s); R+=num(x.r); });
+  let S=0,R=0,P=0;
+  DAYS.forEach(([d])=>{ const x=w.days[d]; S+=num(x.s); R+=num(x.r); P+=num(x.p); });
   const M=num(w.major), W=num(w.withdrawals), F=num(w.funding);
-  return {sales:S,restock:R,major:M,withdrawals:W,funding:F,net:S+F-R-M-W};
+  const totalWithdrawals=P+W;
+  return {sales:S,restock:R,dailyPersonal:P,major:M,weeklyWithdrawals:W,
+    withdrawals:totalWithdrawals,funding:F,net:S+F-R-M-totalWithdrawals};
 }
 
 /* ---------- state ---------- */
@@ -302,7 +301,7 @@ function renderDays(){
   const host=$("#days"); host.innerHTML="";
   DAYS.forEach(([key,name])=>{
     const d=current.days[key];
-    const bal=num(d.s)-num(d.r);
+    const bal=num(d.s)-num(d.r)-num(d.p);
     const card=document.createElement("div"); card.className="day";
     card.innerHTML=`
       <div class="day-top">
@@ -312,12 +311,13 @@ function renderDays(){
       <div class="fields">
         <label class="field f-sale"><span>Sales</span><input inputmode="decimal" data-d="${key}" data-f="s" value="${d.s}" placeholder="0"></label>
         <label class="field f-restock"><span>Restock</span><input inputmode="decimal" data-d="${key}" data-f="r" value="${d.r}" placeholder="0"></label>
+        <label class="field f-personal"><span>Personal</span><input inputmode="decimal" data-d="${key}" data-f="p" value="${d.p}" placeholder="0"></label>
       </div>`;
     host.appendChild(card);
   });
   host.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",e=>{
     const {d,f}=e.target.dataset; current.days[d][f]=e.target.value;
-    const dd=current.days[d]; const bal=num(dd.s)-num(dd.r);
+    const dd=current.days[d]; const bal=num(dd.s)-num(dd.r)-num(dd.p);
     const el=host.querySelector(`[data-bal="${d}"]`); el.textContent=money(bal); el.className="bal "+signClass(bal);
     renderWeekSummary(); queueSave();
   }));
@@ -331,7 +331,7 @@ function renderMajor(){
       <input id="major" inputmode="decimal" value="${current.major}" placeholder="0">
     </div>
     <div class="major personal-withdrawals">
-      <div class="lab">Personal withdrawals<small>Weekly owner withdrawals</small></div>
+      <div class="lab">Personal withdrawals<small>Additional weekly withdrawals; daily Personal is included automatically</small></div>
       <input id="personalWithdrawals" inputmode="decimal" value="${current.withdrawals}" placeholder="0">
     </div>
     <div class="major funding">
@@ -350,7 +350,7 @@ function renderWeekSummary(){
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(t.sales)}">${money(t.sales)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(t.restock)}</span></div>
     <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(t.major)}</span></div>
-    <div class="rrow"><span class="k">Personal withdrawals</span><span class="v withdrawal">${money(t.withdrawals)}</span></div>
+    <div class="rrow"><span class="k">Total personal withdrawals</span><span class="v withdrawal">${money(t.withdrawals)}</span></div>
     <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(t.funding)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(t.net)}">${money(t.net)}</span></div>`;
 }
@@ -395,7 +395,7 @@ function renderMonth(){
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
     <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(M)}</span></div>
-    <div class="rrow"><span class="k">Personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
+    <div class="rrow"><span class="k">Total personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
     <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(F)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
   const bd=$("#monthBreakdown");
@@ -430,7 +430,7 @@ function renderYear(){
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
     <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(M)}</span></div>
-    <div class="rrow"><span class="k">Personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
+    <div class="rrow"><span class="k">Total personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
     <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(F)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
 }
@@ -440,7 +440,7 @@ let saveTimer=null;
 function queueSave(){ flash("Saving…",false); clearTimeout(saveTimer); saveTimer=setTimeout(saveCurrent,450); }
 async function saveCurrent(){ const t=totals(current);
   weeks[current.start]=JSON.parse(JSON.stringify(current));
-  if(t.sales||t.restock||t.major||t.withdrawals||t.funding) {
+  if(t.sales||t.restock||t.major||t.dailyPersonal||t.weeklyWithdrawals||t.funding) {
     await store.set(STORE_PREFIX+current.start,current);
   } else {
     delete weeks[current.start];
@@ -486,20 +486,20 @@ document.addEventListener("click", (e) => {
 });
 
 $("#exportBtn").addEventListener("click",()=>{
-  const rows=[["Week start","Day","Sale","Restock","Major","Personal Withdrawals","Funding Received","Balance"]];
+  const rows=[["Week start","Day","Sale","Restock","Daily Personal","Major","Additional Weekly Withdrawals","Funding Received","Total Withdrawals","Balance"]];
   Object.keys(weeks).sort().forEach(k=>{
     DAYS.forEach(([d,name])=>{ const x=weeks[k].days[d];
-      rows.push([k,name,num(x.s),num(x.r),"","","",num(x.s)-num(x.r)]); });
+      rows.push([k,name,num(x.s),num(x.r),num(x.p),"","","","",num(x.s)-num(x.r)-num(x.p)]); });
     const t=totals(weeks[k]);
-    rows.push([k,"WEEK TOTAL",t.sales,t.restock,t.major,t.withdrawals,t.funding,t.net]);
+    rows.push([k,"WEEK TOTAL",t.sales,t.restock,t.dailyPersonal,t.major,t.weeklyWithdrawals,t.funding,t.withdrawals,t.net]);
   });
   download("shop-ledger.csv","text/csv",rows.map(r=>r.join(",")).join("\n"));
 });
-$("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:4,weeks},null,2)));
+$("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:5,weeks},null,2)));
 $("#restoreBtn").addEventListener("click",()=>$("#restoreFile").click());
 $("#restoreFile").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
-  rd.onload=async()=>{ try{ const data=JSON.parse(rd.result); if(![3,4].includes(data.v) || !data.weeks || typeof data.weeks!=="object") {
+  rd.onload=async()=>{ try{ const data=JSON.parse(rd.result); if(![3,4,5].includes(data.v) || !data.weeks || typeof data.weeks!=="object") {
         alert("This backup uses an older ledger format. V2 starts fresh; keep the old backup as an archive.");
         return;
       }
@@ -518,11 +518,7 @@ async function boot(){
     const s=fk.slice(STORE_PREFIX.length);
     const v=await store.get(fk);
     if(!v) continue;
-    const hasLegacyPersonal=DAYS.some(([day])=>num(v.days?.[day]?.p)!==0);
-    const normalized=normalize(v);
-    weeks[s]=normalized;
-    // Persist the migration so legacy personal amounts are not added on every reload.
-    if(hasLegacyPersonal) await store.set(fk,normalized);
+    weeks[s]=normalize(v);
   }
   const mon=iso(mondayOf(new Date()));
   current=weeks[mon]?normalize(JSON.parse(JSON.stringify(weeks[mon]))):emptyWeek(mon);
