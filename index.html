@@ -111,6 +111,23 @@
     border:1px solid rgba(58,134,255,.16);border-radius:18px;padding:16px 16px 14px;margin-top:16px;
     box-shadow:var(--glow-blue);
   }
+  .restock-card{background:linear-gradient(165deg,#1A2233 0%,#12151F 100%);border:1px solid rgba(54,214,220,.2);border-radius:18px;padding:16px;margin-top:14px;box-shadow:var(--glow-soft)}
+  .restock-card h2{font-size:15px;margin:0;font-weight:750}
+  .restock-old{background:#0F1420;border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin:10px 0 14px}
+  .restock-old small,.restock-muted{display:block;color:var(--muted);font-size:11px}
+  .restock-old strong{font-family:var(--mono);font-size:21px;display:block;margin-top:2px}
+  .restock-section{border-top:1px solid var(--line);padding-top:12px;margin-top:13px}
+  .restock-section h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin:0 0 9px}
+  .restock-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+  .restock-form input,.restock-form select{width:100%;min-width:0;font:inherit;font-size:13px;color:var(--ink);background:var(--card-2);border:1px solid var(--line);border-radius:9px;padding:10px}
+  .restock-form .wide{grid-column:1/-1}
+  .restock-form button{font:inherit;font-size:12px;font-weight:650;color:var(--ink);background:#1B2940;border:1px solid rgba(58,134,255,.28);border-radius:9px;padding:10px 12px;cursor:pointer}
+  .restock-entry{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:12px}
+  .restock-entry small{display:block;color:var(--muted);font-size:10px}
+  .restock-entry button{border:0;background:transparent;color:var(--neg);font-size:17px;padding:0 5px}
+  .supplier-balances{display:grid;gap:6px}
+  .supplier-balance{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--ink-soft)}
+  .supplier-balance strong{font-family:var(--mono);color:var(--ink)}
   .receipt h2{font-size:11px;letter-spacing:.10em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;font-weight:700}
   .rrow{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line)}
   .rrow .k{font-size:14px;color:var(--ink-soft)}
@@ -179,6 +196,7 @@
     <div id="majorHost"></div>
 
     <div class="receipt" id="weekSummary"></div>
+    <div id="restockHost"></div>
 
     <!-- Accordion UI for Saved Weeks -->
     <div class="accordion-header" id="savedWeeksToggle">
@@ -232,6 +250,7 @@ const DAYS = [["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],
               ["thu","Thursday"],["fri","Friday"],["sat","Saturday"]];
 // A new storage namespace starts V2 clean without deleting the earlier local data.
 const STORE_PREFIX = "shop-v2:week:";
+const SUPPLIER_KEY = "shop-v2:suppliers";
 
 /* ---------- storage: Claude preview (window.storage) → phone (localStorage) → memory ---------- */
 const hasWS = typeof window!=="undefined" && window.storage && window.storage.set;
@@ -246,9 +265,9 @@ const store = {
     else if(ls){ raw=ls.getItem(k); } else { raw=mem[k]??null; }
     return raw?JSON.parse(raw):null; },
   async del(k){ if(hasWS){ try{ await window.storage.delete(k);}catch(e){} } if(ls) ls.removeItem(k); delete mem[k]; },
-  async keys(){
-    if(hasWS){ try{ const r=await window.storage.list(STORE_PREFIX); return (r&&r.keys)||[]; }catch(e){ return []; } }
-    if(ls){ const out=[]; for(let i=0;i<ls.length;i++){ const key=ls.key(i); if(key&&key.startsWith(STORE_PREFIX)) out.push(key);} return out; }
+  async keys(prefix=STORE_PREFIX){
+    if(hasWS){ try{ const r=await window.storage.list(prefix); return (r&&r.keys)||[]; }catch(e){ return []; } }
+    if(ls){ const out=[]; for(let i=0;i<ls.length;i++){ const key=ls.key(i); if(key&&key.startsWith(prefix)) out.push(key);} return out; }
     return Object.keys(mem).filter(key=>key.startsWith(STORE_PREFIX)); }
 };
 const storeMode = hasWS ? "preview" : (ls ? "device" : "memory");
@@ -266,7 +285,7 @@ function prettyWeek(s){ const a=new Date(s+"T00:00"),b=new Date(a); b.setDate(b.
 
 function emptyWeek(s){
   const days={}; DAYS.forEach(([k])=>days[k]={s:"",r:"",p:""});
-  return {start:s,days,major:"",withdrawals:"",funding:""};
+  return {start:s,days,major:"",cashPurchases:[],creditPurchases:[],supplierPayments:[],withdrawals:"",funding:""};
 }
 function normalize(w){
   if(!w.days) w.days={};
@@ -276,21 +295,24 @@ function normalize(w){
     w.days[k]={s:d.s??"",r:d.r??"",p:d.p??""};
   });
   if(w.major===undefined) w.major="";
+  w.cashPurchases=Array.isArray(w.cashPurchases)?w.cashPurchases:[];
+  if(num(w.major)>0&&!w._majorMigrated){w.cashPurchases.push({id:"legacy-"+w.start,amount:num(w.major),note:"Previous major restock (legacy)",legacy:true});w._majorMigrated=true;w.major="";}
+  w.creditPurchases=Array.isArray(w.creditPurchases)?w.creditPurchases:[];
+  w.supplierPayments=Array.isArray(w.supplierPayments)?w.supplierPayments:[];
   if(w.withdrawals===undefined) w.withdrawals="";
   if(w.funding===undefined) w.funding="";
   return w;
 }
+function sumEntries(a){return a.reduce((v,x)=>v+num(x.amount),0);}
 function totals(w){
-  let S=0,R=0,P=0;
-  DAYS.forEach(([d])=>{ const x=w.days[d]; S+=num(x.s); R+=num(x.r); P+=num(x.p); });
-  const M=num(w.major), W=num(w.withdrawals), F=num(w.funding);
-  const totalWithdrawals=P+W;
-  return {sales:S,restock:R,dailyPersonal:P,major:M,weeklyWithdrawals:W,
-    withdrawals:totalWithdrawals,funding:F,net:S+F-R-M-totalWithdrawals};
+ let S=0,R=0,P=0;DAYS.forEach(([d])=>{const x=w.days[d];S+=num(x.s);R+=num(x.r);P+=num(x.p);});
+ const cashMajor=sumEntries(w.cashPurchases||[]),creditMajor=sumEntries(w.creditPurchases||[]),supplierPaid=sumEntries(w.supplierPayments||[]);
+ const W=num(w.withdrawals),F=num(w.funding),totalWithdrawals=P+W,cashRestock=R+cashMajor;
+ return {sales:S,restock:cashRestock,dailyRestock:R,cashMajor,creditMajor,supplierPaid,dailyPersonal:P,weeklyWithdrawals:W,withdrawals:totalWithdrawals,funding:F,net:S+F-cashRestock-supplierPaid-totalWithdrawals};
 }
 
 /* ---------- state ---------- */
-let weeks={}, current=null;
+let weeks={}, current=null, suppliers=[];
 const $ = s => document.querySelector(s);
 
 /* ---------- week render ---------- */
@@ -323,33 +345,38 @@ function renderDays(){
   }));
 }
 
+function supplierBalance(name,beforeWeek=null){let v=0;Object.keys(weeks).sort().forEach(k=>{if(beforeWeek&&k>=beforeWeek)return;const w=weeks[k];v+=sumEntries((w.creditPurchases||[]).filter(x=>x.supplier===name))-sumEntries((w.supplierPayments||[]).filter(x=>x.supplier===name));});return v;}
+function currentSupplierBalance(name){return supplierBalance(name,current.start)+sumEntries(current.creditPurchases.filter(x=>x.supplier===name))-sumEntries(current.supplierPayments.filter(x=>x.supplier===name));}
+async function saveSuppliers(){await store.set(SUPPLIER_KEY,suppliers);}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function supplierOptions(){return '<option value="">Choose supplier</option>'+suppliers.map(n=>'<option value="'+esc(n)+'">'+esc(n)+'</option>').join("");}
+function entryRows(arr,type){if(!arr.length)return '<div class="restock-muted">No entries this week.</div>';return arr.map((x,i)=>'<div class="restock-entry"><div>'+esc(x.supplier||x.note||"Purchase")+'<small>'+esc(x.note||"")+'</small></div><div><strong>'+money(num(x.amount))+'</strong> <button data-remove="'+type+'" data-index="'+i+'">×</button></div></div>').join("");}
 function renderMajor(){
-  const host=$("#majorHost");
-  host.innerHTML=`
-    <div class="major">
-      <div class="lab">Major restock<small>Weekend big buy (week total)</small></div>
-      <input id="major" inputmode="decimal" value="${current.major}" placeholder="0">
-    </div>
-    <div class="major personal-withdrawals">
-      <div class="lab">Personal withdrawals<small>Additional weekly withdrawals; daily Personal is included automatically</small></div>
-      <input id="personalWithdrawals" inputmode="decimal" value="${current.withdrawals}" placeholder="0">
-    </div>
-    <div class="major funding">
-      <div class="lab">Funding received<small>Personal capital added this week (not sales)</small></div>
-      <input id="fundingReceived" inputmode="decimal" value="${current.funding}" placeholder="0">
-    </div>`;
-  $("#major").addEventListener("input",e=>{ current.major=e.target.value; renderWeekSummary(); queueSave(); });
-  $("#personalWithdrawals").addEventListener("input",e=>{ current.withdrawals=e.target.value; renderWeekSummary(); queueSave(); });
-  $("#fundingReceived").addEventListener("input",e=>{ current.funding=e.target.value; renderWeekSummary(); queueSave(); });
+ const h=$("#restockHost"),old=suppliers.reduce((a,n)=>a+supplierBalance(n,current.start),0),credit=sumEntries(current.creditPurchases),paid=sumEntries(current.supplierPayments),due=suppliers.reduce((a,n)=>a+currentSupplierBalance(n),0);
+ h.innerHTML=`<div class="restock-card"><h2>Major Restocks</h2><div class="restock-muted">Stock purchases and supplier credit tracking</div>
+ <div class="restock-old"><small>OLD SUPPLIER BALANCE BROUGHT FORWARD</small><strong>${money(old)}</strong></div>
+ <div class="restock-section"><h3>1. Goods bought — full cash</h3><div class="restock-entry"><span>Cash purchases this week</span><strong>${money(sumEntries(current.cashPurchases))}</strong></div>${entryRows(current.cashPurchases,"cash")}
+ <div class="restock-form"><input id="cashPurchaseAmount" inputmode="decimal" placeholder="Amount (GH₵)"><input id="cashPurchaseNote" placeholder="Supplier / details"><button class="wide" id="addCashPurchase">+ Add cash purchase</button></div></div>
+ <div class="restock-section"><h3>2. Goods bought — on credit</h3><div class="restock-entry"><span>New credit this week</span><strong>${money(credit)}</strong></div>${entryRows(current.creditPurchases,"credit")}
+ <div class="restock-form"><select id="creditSupplier" class="wide">${supplierOptions()}</select><input id="creditAmount" inputmode="decimal" placeholder="Credit amount (GH₵)"><input id="creditNote" placeholder="Details (optional)"><button class="wide" id="addCreditPurchase">+ Add credit purchase</button></div></div>
+ <div class="restock-section"><h3>3. Payments to suppliers</h3><div class="restock-entry"><span>Payments made this week</span><strong>${money(paid)}</strong></div>${entryRows(current.supplierPayments,"payment")}
+ <div class="restock-form"><select id="paymentSupplier" class="wide">${supplierOptions()}</select><div class="wide restock-muted" id="supplierDueHint">Choose a supplier to see their current balance.</div><input id="paymentAmount" inputmode="decimal" placeholder="Amount paid (GH₵)"><input id="paymentNote" placeholder="Details (optional)"><button class="wide" id="addSupplierPayment">+ Record supplier payment</button></div></div>
+ <div class="restock-section"><h3>Supplier directory</h3><div class="supplier-balances">${suppliers.length?suppliers.map(n=>'<div class="supplier-balance"><span>'+esc(n)+'</span><strong>'+money(currentSupplierBalance(n))+'</strong></div>').join(""):'<span class="restock-muted">No suppliers added yet.</span>'}</div>
+ <div class="restock-form"><input id="newSupplierName" class="wide" placeholder="Supplier name"><button class="wide" id="addSupplier">+ Add supplier</button></div></div>
+ <div class="restock-old"><small>TOTAL SUPPLIER CREDIT OUTSTANDING</small><strong>${money(due)}</strong><span class="restock-muted">Previous balance + new credit − payments</span></div></div>`;
+ const add=(btn,key,amount,note,supplier)=>$(btn).addEventListener("click",()=>{const v=num($(amount).value);if(v<=0){alert("Enter an amount greater than zero.");return;}const x={id:"e"+Date.now()+Math.random().toString(16).slice(2),amount:v,note:$(note).value.trim()};if(supplier){x.supplier=$(supplier).value;if(!x.supplier){alert("Choose a supplier.");return;}}current[key].push(x);queueSave();renderMajor();renderWeekSummary();});
+ add("#addCashPurchase","cashPurchases","#cashPurchaseAmount","#cashPurchaseNote");add("#addCreditPurchase","creditPurchases","#creditAmount","#creditNote","#creditSupplier");add("#addSupplierPayment","supplierPayments","#paymentAmount","#paymentNote","#paymentSupplier");
+ $("#addSupplier").addEventListener("click",async()=>{const n=$("#newSupplierName").value.trim();if(!n){alert("Enter a supplier name.");return;}if(suppliers.some(x=>x.toLowerCase()===n.toLowerCase())){alert("Supplier already exists.");return;}suppliers.push(n);suppliers.sort();await saveSuppliers();renderMajor();});
+ $("#paymentSupplier").addEventListener("change",e=>{$("#supplierDueHint").textContent=e.target.value?"Outstanding for "+e.target.value+": "+money(currentSupplierBalance(e.target.value)):"Choose a supplier to see their current balance.";});
+ h.querySelectorAll("[data-remove]").forEach(btn=>btn.addEventListener("click",()=>{if(!confirm("Remove this entry?"))return;const key=btn.dataset.remove==="cash"?"cashPurchases":btn.dataset.remove==="credit"?"creditPurchases":"supplierPayments";current[key].splice(Number(btn.dataset.index),1);queueSave();renderMajor();renderWeekSummary();}));
 }
-
 function renderWeekSummary(){
   const t=totals(current);
   $("#weekSummary").innerHTML=`
     <h2>Week summary</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(t.sales)}">${money(t.sales)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(t.restock)}</span></div>
-    <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(t.major)}</span></div>
+    <div class="rrow"><span class="k">Supplier repayments</span><span class="v out">${money(t.supplierPaid)}</span></div>
     <div class="rrow"><span class="k">Total personal withdrawals</span><span class="v withdrawal">${money(t.withdrawals)}</span></div>
     <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(t.funding)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(t.net)}">${money(t.net)}</span></div>`;
@@ -388,13 +415,12 @@ function renderAllWeekUI(){ $("#weekStart").value=current.start; renderDays(); r
 function renderMonth(){
   const ym=$("#monthPick").value;
   const list=Object.keys(weeks).filter(k=>k.slice(0,7)===ym).sort();
-  let S=0,R=0,M=0,W=0,F=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;R+=t.restock;M+=t.major;W+=t.withdrawals;F+=t.funding; });
-  const net=S+F-R-M-W;
+  let S=0,R=0,SP=0,W=0,F=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;R+=t.restock;SP+=t.supplierPaid;W+=t.withdrawals;F+=t.funding; });
+  const net=S+F-R-SP-W;
   $("#monthSummary").innerHTML=`
     <h2>Month total · ${list.length} week${list.length===1?"":"s"}</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
-    <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(M)}</span></div>
     <div class="rrow"><span class="k">Total personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
     <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(F)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
@@ -423,13 +449,12 @@ function updateYearOptions(){
 function renderYear(){
   const y=$("#yearPick").value;
   const list=Object.keys(weeks).filter(k=>k.slice(0,4)===y).sort();
-  let S=0,R=0,M=0,W=0,F=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;R+=t.restock;M+=t.major;W+=t.withdrawals;F+=t.funding; });
-  const net=S+F-R-M-W;
+  let S=0,R=0,SP=0,W=0,F=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;R+=t.restock;SP+=t.supplierPaid;W+=t.withdrawals;F+=t.funding; });
+  const net=S+F-R-SP-W;
   $("#yearSummary").innerHTML=`
     <h2>Year total · ${list.length} week${list.length===1?"":"s"}</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
-    <div class="rrow"><span class="k">Major restock</span><span class="v out">${money(M)}</span></div>
     <div class="rrow"><span class="k">Total personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
     <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(F)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
@@ -440,7 +465,7 @@ let saveTimer=null;
 function queueSave(){ flash("Saving…",false); clearTimeout(saveTimer); saveTimer=setTimeout(saveCurrent,450); }
 async function saveCurrent(){ const t=totals(current);
   weeks[current.start]=JSON.parse(JSON.stringify(current));
-  if(t.sales||t.restock||t.major||t.dailyPersonal||t.weeklyWithdrawals||t.funding) {
+  if(t.sales||t.restock||t.cashMajor||t.creditMajor||t.supplierPaid||t.dailyPersonal||t.weeklyWithdrawals||t.funding) {
     await store.set(STORE_PREFIX+current.start,current);
   } else {
     delete weeks[current.start];
@@ -495,15 +520,16 @@ $("#exportBtn").addEventListener("click",()=>{
   });
   download("shop-ledger.csv","text/csv",rows.map(r=>r.join(",")).join("\n"));
 });
-$("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:5,weeks},null,2)));
+$("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:6,weeks,suppliers},null,2)));
 $("#restoreBtn").addEventListener("click",()=>$("#restoreFile").click());
 $("#restoreFile").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f) return; const rd=new FileReader();
-  rd.onload=async()=>{ try{ const data=JSON.parse(rd.result); if(![3,4,5].includes(data.v) || !data.weeks || typeof data.weeks!=="object") {
+  rd.onload=async()=>{ try{ const data=JSON.parse(rd.result); if(![3,4,5,6].includes(data.v) || !data.weeks || typeof data.weeks!=="object") {
         alert("This backup uses an older ledger format. V2 starts fresh; keep the old backup as an archive.");
         return;
       }
       const incoming=data.weeks;
+      if(Array.isArray(data.suppliers))suppliers=data.suppliers.filter(x=>typeof x==="string");await saveSuppliers();
       let n=0; for(const k in incoming){ const w=normalize(incoming[k]); weeks[w.start]=w; await store.set(STORE_PREFIX+w.start,w); n++; }
       loadWeek(current.start); alert("Restored "+n+" week(s)."); }catch(err){ alert("Couldn't read that file."); } };
   rd.readAsText(f); e.target.value="";
@@ -513,6 +539,7 @@ function download(name,type,text){ const b=new Blob([text],{type}); const a=docu
 
 /* ---------- boot ---------- */
 async function boot(){
+  const loaded=await store.get(SUPPLIER_KEY);if(Array.isArray(loaded))suppliers=loaded;
   const keys=await store.keys();
   for(const fk of keys){
     const s=fk.slice(STORE_PREFIX.length);
@@ -523,6 +550,7 @@ async function boot(){
   const mon=iso(mondayOf(new Date()));
   current=weeks[mon]?normalize(JSON.parse(JSON.stringify(weeks[mon]))):emptyWeek(mon);
   renderAllWeekUI();
+  renderMajor();
   $("#storeNote").textContent =
     storeMode==="preview" ? "Auto-saved in this preview. Download the file (⋯ menu) to run it on your phone — then it saves on the device itself."
   : storeMode==="device"  ? "Saved on this device automatically. Your weeks stay here even after you close the page."
