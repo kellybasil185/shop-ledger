@@ -364,7 +364,7 @@ function renderMajor(){
  <div class="restock-section"><h3>Supplier directory</h3><div class="supplier-balances">${suppliers.length?suppliers.map(n=>'<div class="supplier-balance"><span>'+esc(n)+'</span><strong>'+money(currentSupplierBalance(n))+'</strong></div>').join(""):'<span class="restock-muted">No suppliers added yet.</span>'}</div>
  <div class="restock-form"><input id="newSupplierName" class="wide" placeholder="Supplier name"><button class="wide" id="addSupplier">+ Add supplier</button></div></div>
  <div class="restock-old"><small>TOTAL SUPPLIER CREDIT OUTSTANDING</small><strong>${money(due)}</strong><span class="restock-muted">Previous balance + new credit − payments</span></div></div>`;
- const add=(btn,key,amount,note,supplier)=>$(btn).addEventListener("click",()=>{const v=num($(amount).value);if(v<=0){alert("Enter an amount greater than zero.");return;}const x={id:"e"+Date.now()+Math.random().toString(16).slice(2),amount:v,note:$(note).value.trim()};if(supplier){x.supplier=$(supplier).value;if(!x.supplier){alert("Choose a supplier.");return;}}current[key].push(x);queueSave();renderMajor();renderWeekSummary();});
+ const add=(btn,key,amount,note,supplier)=>$(btn).addEventListener("click",()=>{const v=num($(amount).value);if(v<=0){alert("Enter an amount greater than zero.");return;}const x={id:"e"+Date.now()+Math.random().toString(16).slice(2),amount:v,note:$(note).value.trim()};if(supplier){x.supplier=$(supplier).value;if(!x.supplier){alert("Choose a supplier.");return;}if(key==="supplierPayments"&&v>currentSupplierBalance(x.supplier)){alert("Payment exceeds the outstanding balance for this supplier.");return;}}current[key].push(x);queueSave();renderMajor();renderWeekSummary();});
  add("#addCashPurchase","cashPurchases","#cashPurchaseAmount","#cashPurchaseNote");add("#addCreditPurchase","creditPurchases","#creditAmount","#creditNote","#creditSupplier");add("#addSupplierPayment","supplierPayments","#paymentAmount","#paymentNote","#paymentSupplier");
  $("#addSupplier").addEventListener("click",async()=>{const n=$("#newSupplierName").value.trim();if(!n){alert("Enter a supplier name.");return;}if(suppliers.some(x=>x.toLowerCase()===n.toLowerCase())){alert("Supplier already exists.");return;}suppliers.push(n);suppliers.sort();await saveSuppliers();renderMajor();});
  $("#paymentSupplier").addEventListener("change",e=>{$("#supplierDueHint").textContent=e.target.value?"Outstanding for "+e.target.value+": "+money(currentSupplierBalance(e.target.value)):"Choose a supplier to see their current balance.";});
@@ -421,6 +421,7 @@ function renderMonth(){
     <h2>Month total · ${list.length} week${list.length===1?"":"s"}</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
+    <div class="rrow"><span class="k">Supplier repayments</span><span class="v out">${money(SP)}</span></div>
     <div class="rrow"><span class="k">Total personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
     <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(F)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
@@ -455,6 +456,7 @@ function renderYear(){
     <h2>Year total · ${list.length} week${list.length===1?"":"s"}</h2>
     <div class="rrow"><span class="k">Total sales</span><span class="v ${signClass(S)}">${money(S)}</span></div>
     <div class="rrow"><span class="k">Total restock</span><span class="v out">${money(R)}</span></div>
+    <div class="rrow"><span class="k">Supplier repayments</span><span class="v out">${money(SP)}</span></div>
     <div class="rrow"><span class="k">Total personal withdrawals</span><span class="v withdrawal">${money(W)}</span></div>
     <div class="rrow"><span class="k">Funding received</span><span class="v funding-in">${money(F)}</span></div>
     <div class="rrow net"><span class="k">Net balance</span><span class="v ${signClass(net)}">${money(net)}</span></div>`;
@@ -511,14 +513,16 @@ document.addEventListener("click", (e) => {
 });
 
 $("#exportBtn").addEventListener("click",()=>{
-  const rows=[["Week start","Day","Sale","Restock","Daily Personal","Major","Additional Weekly Withdrawals","Funding Received","Total Withdrawals","Balance"]];
+  const rows=[["Week start","Entry type","Day","Supplier / details","Amount","Daily sales","Daily restock","Daily personal","Cash major restock","Credit purchase","Supplier payment","Weekly personal withdrawals","Funding received","Total withdrawals","Net cash balance"]];
   Object.keys(weeks).sort().forEach(k=>{
-    DAYS.forEach(([d,name])=>{ const x=weeks[k].days[d];
-      rows.push([k,name,num(x.s),num(x.r),num(x.p),"","","","",num(x.s)-num(x.r)-num(x.p)]); });
-    const t=totals(weeks[k]);
-    rows.push([k,"WEEK TOTAL",t.sales,t.restock,t.dailyPersonal,t.major,t.weeklyWithdrawals,t.funding,t.withdrawals,t.net]);
+    const w=weeks[k];
+    DAYS.forEach(([d,name])=>{const x=w.days[d];rows.push([k,"DAILY",name,"", "",num(x.s),num(x.r),num(x.p),"","","","","","",""]);});
+    (w.cashPurchases||[]).forEach(x=>rows.push([k,"CASH MAJOR RESTOCK","",x.note||"",num(x.amount),"","","","","","","","","",""]));
+    (w.creditPurchases||[]).forEach(x=>rows.push([k,"CREDIT PURCHASE","",x.supplier+" "+(x.note||""),num(x.amount),"","","","","","","","","",""]));
+    (w.supplierPayments||[]).forEach(x=>rows.push([k,"SUPPLIER PAYMENT","",x.supplier+" "+(x.note||""),num(x.amount),"","","","","","","","","",""]));
+    const t=totals(w);rows.push([k,"WEEK TOTAL","","","",t.sales,t.dailyRestock,t.dailyPersonal,t.cashMajor,t.creditMajor,t.supplierPaid,t.weeklyWithdrawals,t.funding,t.withdrawals,t.net]);
   });
-  download("shop-ledger.csv","text/csv",rows.map(r=>r.join(",")).join("\n"));
+  download("shop-ledger.csv","text/csv",rows.map(r=>r.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(",")).join("\n"));
 });
 $("#backupBtn").addEventListener("click",()=>download("ledger-backup.json","application/json",JSON.stringify({v:6,weeks,suppliers},null,2)));
 $("#restoreBtn").addEventListener("click",()=>$("#restoreFile").click());
