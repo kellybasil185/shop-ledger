@@ -193,7 +193,12 @@
     </div>
 
     <div id="days"></div>
-    <div id="majorHost"></div>
+    <div id="majorHost">
+      <div class="fields" style="margin-top:14px">
+        <label class="field personal-withdrawals"><span>Personal withdrawals (additional)</span><input id="weeklyWithdrawals" inputmode="decimal" placeholder="0"></label>
+        <label class="field funding"><span>Funding received</span><input id="weeklyFunding" inputmode="decimal" placeholder="0"></label>
+      </div>
+    </div>
 
     <div class="receipt" id="weekSummary"></div>
     <div id="restockHost"></div>
@@ -409,7 +414,14 @@ function renderWeekList(){
   });
 }
 
-function renderAllWeekUI(){ $("#weekStart").value=current.start; renderDays(); renderMajor(); renderWeekSummary(); renderWeekList(); }
+function renderAllWeekUI(){
+  $("#weekStart").value=current.start; renderDays(); renderMajor();
+  $("#weeklyWithdrawals").value=current.withdrawals??"";
+  $("#weeklyFunding").value=current.funding??"";
+  renderWeekSummary(); renderWeekList();
+}
+$("#weeklyWithdrawals").addEventListener("input",e=>{current.withdrawals=e.target.value;renderWeekSummary();queueSave();});
+$("#weeklyFunding").addEventListener("input",e=>{current.funding=e.target.value;renderWeekSummary();queueSave();});
 
 /* ---------- month & year ---------- */
 function renderMonth(){
