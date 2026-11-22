@@ -170,6 +170,40 @@
   .pill{display:inline-block;font-size:11px;color:var(--ink-soft);background:#141926;border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;transition:.15s}
   .pill:hover{border-color:rgba(58,134,255,.35);color:var(--ink)}
   .note{flex-basis:100%;font-size:11px;color:var(--muted);line-height:1.5;margin-top:8px}
+
+  /* Sales intelligence: responsive Monday–Saturday heatmaps */
+  .heat-card{margin-top:14px;padding:15px;border:1px solid rgba(54,214,220,.17);border-radius:17px;background:linear-gradient(160deg,#192235,#121720);box-shadow:var(--glow-soft)}
+  .heat-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:13px}
+  .heat-top h2{margin:0;font-size:15px;font-weight:750}
+  .heat-top p{margin:4px 0 0;font-size:11px;color:var(--muted);line-height:1.5}
+  .heat-controls{display:flex;gap:7px;flex-wrap:wrap}
+  .heat-controls select{width:auto;max-width:150px;padding:7px 8px;font-size:11px;border-radius:8px}
+  .heat-grid-scroll{max-width:100%;overflow-x:auto}
+  .heat-grid-scroll.year{max-height:465px;overflow-y:auto}
+  .heat-grid{min-width:300px;display:grid;grid-template-columns:56px repeat(6,minmax(0,1fr));gap:4px}
+  .heat-head{position:sticky;top:0;z-index:1;text-align:center;background:#1c273b;border-radius:6px;color:var(--ink-soft);font-size:10px;font-weight:700;padding:8px 1px}
+  .heat-week{display:flex;align-items:center;color:var(--muted);font-size:10px;font-weight:650;white-space:nowrap}
+  .heat-cell{min-height:35px;display:flex;justify-content:center;align-items:center;border-radius:6px;font:600 10px var(--mono);color:var(--ink);border:1px solid rgba(255,255,255,.035);white-space:nowrap}
+  .heat-cell.missing{background:rgba(125,134,155,.075);color:#6F788B;border:1px dashed rgba(125,134,155,.16)}
+  .heat-cell.outside{background:transparent;border:0}
+  .heat-cell.zero{background:rgba(125,134,155,.24);color:#B4BBCB}
+  .heat-cell.level-1{background:rgba(255,92,114,.27);color:#FFB9C3}
+  .heat-cell.level-2{background:rgba(247,161,92,.22);color:#FAD4A5}
+  .heat-cell.level-3{background:rgba(58,134,255,.27);color:#BDD5FF}
+  .heat-cell.level-4{background:rgba(54,214,220,.28);color:#AAFBFE}
+  .heat-cell.level-5{background:rgba(51,214,159,.38);color:#B3FFE0}
+  .heat-legend{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin:12px 0 0;color:var(--muted);font-size:10px}
+  .heat-swatch{display:inline-block;width:13px;height:11px;border-radius:3px;vertical-align:-2px;margin-right:3px}
+  .heat-legend-colors{display:flex;gap:5px;align-items:center}
+  .heat-subtitle{font-size:11px;text-transform:uppercase;letter-spacing:.055em;color:var(--ink-soft);font-weight:700;margin:17px 0 8px}
+  .heat-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .heat-stat{background:#101725;border:1px solid var(--line);border-radius:9px;padding:9px 8px;min-width:0}
+  .heat-stat-label{display:block;color:var(--muted);font-size:10px}
+  .heat-stat-val{display:block;font-family:var(--mono);font-size:15px;font-weight:700;margin-top:3px}
+  .heat-stat-n{display:block;color:var(--muted);font-size:10px;margin-top:2px}
+  .heat-foot{color:var(--muted);font-size:11px;line-height:1.55;margin:12px 0 0}
+  @media(max-width:370px){.heat-card{padding:11px}.heat-grid{grid-template-columns:48px repeat(6,minmax(0,1fr));gap:3px;min-width:290px}.heat-cell{font-size:9px}.heat-stat-val{font-size:13px}}
+
 </style>
 
 <div class="wrap">
@@ -227,6 +261,18 @@
       <input type="month" id="monthPick">
     </div>
     <div class="receipt" id="monthSummary"></div>
+    <section class="heat-card" aria-label="Monthly day-of-week sales heatmap">
+      <div class="heat-top">
+        <div><h2>Day sales heatmap</h2><p>Daily sales across the selected calendar month</p></div>
+        <div class="heat-controls">
+          <select id="monthHeatMode" aria-label="Monthly heatmap colour scale">
+            <option value="relative">Week-relative</option>
+            <option value="raw">Raw sales</option>
+          </select>
+        </div>
+      </div>
+      <div id="monthHeatmap"></div>
+    </section>
     <div class="saved-head"><h2>Weeks this month</h2></div>
     <div id="monthBreakdown"></div>
     
@@ -238,6 +284,24 @@
       <select id="yearPick"></select>
     </div>
     <div class="receipt" id="yearSummary"></div>
+    <section class="heat-card" aria-label="Yearly day-of-week sales heatmap">
+      <div class="heat-top">
+        <div><h2>Year sales heatmap</h2><p>Weekday performance throughout the selected calendar year</p></div>
+        <div class="heat-controls">
+          <select id="yearHeatRange" aria-label="Year heatmap time window">
+            <option value="4">Last 4 weeks</option>
+            <option value="8">Last 8 weeks</option>
+            <option value="12" selected>Last 12 weeks</option>
+            <option value="all">Full year</option>
+          </select>
+          <select id="yearHeatMode" aria-label="Year heatmap colour scale">
+            <option value="relative">Week-relative</option>
+            <option value="raw">Raw sales</option>
+          </select>
+        </div>
+      </div>
+      <div id="yearHeatmap"></div>
+    </section>
   </section>
 
   <footer>
@@ -423,8 +487,104 @@ function renderAllWeekUI(){
 $("#weeklyWithdrawals").addEventListener("input",e=>{current.withdrawals=e.target.value;renderWeekSummary();queueSave();});
 $("#weeklyFunding").addEventListener("input",e=>{current.funding=e.target.value;renderWeekSummary();queueSave();});
 
+
+/* ---------- auto-calculated day sales heatmaps ---------- */
+// Sales are placed on the actual calendar date, including weeks crossing a month/year.
+// Blank fields are missing; "0" is an explicit recorded zero.
+function salesHeatRows(period, selected) {
+  const rows=[];
+  Object.keys(weeks).sort().reverse().forEach(start=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(start)) return;
+    const w=weeks[start], base=new Date(start+"T00:00:00");
+    if(Number.isNaN(base.getTime())) return;
+    const days=DAYS.map(([key],i)=>{
+      const d=new Date(base);d.setDate(base.getDate()+i);
+      const date=iso(d), raw=w.days&&w.days[key]?w.days[key].s:undefined;
+      const recorded=raw!==undefined&&raw!==null&&String(raw).trim()!=="";
+      return {date,weekday:key,inPeriod:period==="month"?date.slice(0,7)===selected:date.slice(0,4)===selected,
+        value:recorded?num(raw):null};
+    });
+    if(!days.some(d=>d.inPeriod&&d.value!==null)) return;
+    const valid=days.filter(d=>d.value!==null);
+    const weekMean=valid.length?valid.reduce((s,d)=>s+d.value,0)/valid.length:0;
+    rows.push({start,days,weekMean});
+  });
+  return rows;
+}
+function heatCellLabel(v) {
+  if(v>=1000) return (Math.round(v/100)/10).toString()+"k";
+  return fmtNum.format(Math.round(v));
+}
+function heatColour(value,avg,max,mode) {
+  if(value===0) return "zero";
+  if(mode==="raw") return "level-"+Math.max(1,Math.min(5,Math.ceil(5*value/(max||1))));
+  const ratio=avg>0?value/avg:1;
+  return "level-"+(ratio<.6?1:ratio<.85?2:ratio<1.15?3:ratio<1.45?4:5);
+}
+function renderSalesHeatmap(period) {
+  const monthly=period==="month";
+  const selected=$(monthly?"#monthPick":"#yearPick").value;
+  const host=$(monthly?"#monthHeatmap":"#yearHeatmap");
+  const mode=$(monthly?"#monthHeatMode":"#yearHeatMode").value;
+  let rows=salesHeatRows(period,selected);
+  if(!monthly) {
+    const range=$("#yearHeatRange").value;
+    if(range!=="all") rows=rows.slice(0,Number(range));
+  }
+  if(!rows.length) {
+    host.innerHTML='<div class="empty">No recorded sales for this period yet. Add daily sales in the Week tab to build the heatmap.</div>';
+    return;
+  }
+  const stats=DAYS.map(([key,name])=>({key,name,total:0,count:0,wins:0,lows:0}));
+  let complete=0, max=0;
+  rows.forEach(row=>{
+    const entries=row.days.filter(d=>d.inPeriod&&d.value!==null);
+    entries.forEach(day=>{
+      const st=stats.find(s=>s.key===day.weekday); st.total+=day.value;st.count++;
+      max=Math.max(max,day.value);
+    });
+    // Count a "win" only for a fully recorded Monday–Saturday week inside this period.
+    if(row.days.every(d=>d.inPeriod&&d.value!==null)){
+      complete++;
+      const hi=Math.max(...row.days.map(d=>d.value));
+      const lo=Math.min(...row.days.map(d=>d.value));
+      row.days.forEach(d=>{
+        const st=stats.find(s=>s.key===d.weekday);
+        if(d.value===hi)st.wins++;
+        if(d.value===lo)st.lows++;
+      });
+    }
+  });
+  const headers=['<div class="heat-head">Week</div>'].concat(DAYS.map(([,name])=>'<div class="heat-head">'+name.slice(0,3)+'</div>')).join("");
+  const cells=rows.map(row=>{
+    const weekDate=new Date(row.start+"T00:00:00");
+    let html='<div class="heat-week" title="Week starting '+row.start+'">'+weekDate.toLocaleDateString(undefined,{month:"short",day:"numeric"})+'</div>';
+    row.days.forEach(d=>{
+      if(!d.inPeriod){html+='<div class="heat-cell outside" title="Outside selected period" aria-label="Outside selected period"></div>';return;}
+      if(d.value===null){html+='<div class="heat-cell missing" title="'+d.date+': not recorded" aria-label="'+d.date+': no entry">—</div>';return;}
+      const colour=heatColour(d.value,row.weekMean,max,mode);
+      const compared=row.weekMean>0?Math.round(100*(d.value/row.weekMean-1)):0;
+      const detail=d.date+': '+money(d.value)+' sales'+(mode==="relative"?' ('+(compared>=0?'+':'')+compared+'% vs week average)':'');
+      html+='<div class="heat-cell '+colour+'" title="'+detail+'" aria-label="'+detail+'">'+heatCellLabel(d.value)+'</div>';
+    });
+    return html;
+  }).join("");
+  const legend='<div class="heat-legend"><span>'+(mode==="relative"?'Colour = performance within each week':'Colour = sales relative to highest day shown')+'</span><span class="heat-legend-colors"><span>Low</span><i class="heat-swatch heat-cell level-1"></i><i class="heat-swatch heat-cell level-2"></i><i class="heat-swatch heat-cell level-3"></i><i class="heat-swatch heat-cell level-4"></i><i class="heat-swatch heat-cell level-5"></i><span>High</span></span></div>';
+  const averages=stats.map(s=>'<div class="heat-stat"><span class="heat-stat-label">'+s.name+'</span><strong class="heat-stat-val">'+(s.count?money(s.total/s.count):'—')+'</strong><span class="heat-stat-n">'+s.count+' recorded day'+(s.count===1?'':'s')+'</span></div>').join("");
+  let ranking="";
+  if(complete){
+    const win=[...stats].sort((a,b)=>b.wins-a.wins)[0];
+    const low=[...stats].sort((a,b)=>b.lows-a.lows)[0];
+    ranking='<p class="heat-foot">Highest day most often: <strong>'+win.name+'</strong> ('+win.wins+'/'+complete+' complete weeks). Lowest most often: <strong>'+low.name+'</strong> ('+low.lows+'/'+complete+'). Ties count for each day.</p>';
+  }else ranking='<p class="heat-foot">No complete Monday–Saturday weeks in this view yet, so weekday win/loss counts are withheld.</p>';
+  host.innerHTML='<div class="heat-grid-scroll'+(monthly?'':' year')+'"><div class="heat-grid">'+headers+cells+'</div></div>'+
+    legend+'<div class="heat-subtitle">Average sales by weekday</div><div class="heat-stats">'+averages+'</div>'+ranking+
+    '<p class="heat-foot">— = no sales entry; 0 = recorded zero sales (possibly closed). Calendar dates determine heatmap membership; financial summaries above still group whole weeks by their Monday start date.</p>';
+}
+
 /* ---------- month & year ---------- */
 function renderMonth(){
+  renderSalesHeatmap("month");
   const ym=$("#monthPick").value;
   const list=Object.keys(weeks).filter(k=>k.slice(0,7)===ym).sort();
   let S=0,R=0,SP=0,W=0,F=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;R+=t.restock;SP+=t.supplierPaid;W+=t.withdrawals;F+=t.funding; });
@@ -460,6 +620,7 @@ function updateYearOptions(){
 }
 
 function renderYear(){
+  renderSalesHeatmap("year");
   const y=$("#yearPick").value;
   const list=Object.keys(weeks).filter(k=>k.slice(0,4)===y).sort();
   let S=0,R=0,SP=0,W=0,F=0; list.forEach(k=>{ const t=totals(weeks[k]); S+=t.sales;R+=t.restock;SP+=t.supplierPaid;W+=t.withdrawals;F+=t.funding; });
@@ -485,7 +646,7 @@ async function saveCurrent(){ const t=totals(current);
     delete weeks[current.start];
     await store.del(STORE_PREFIX+current.start);
   }
-  flash("All changes <b>saved</b>",true); renderWeekList(); }
+  flash("All changes <b>saved</b>",true); renderWeekList(); if($("#panelMonth").classList.contains("on")){renderMonth();renderYear();} }
 function flash(html,fade){ const tag=$("#savedTag"); tag.innerHTML=html; tag.classList.add("show"); if(fade) setTimeout(()=>tag.classList.remove("show"),1400); }
 function loadWeek(s){ current=normalize(JSON.parse(JSON.stringify(weeks[s]||emptyWeek(s)))); renderAllWeekUI(); }
 
@@ -507,6 +668,9 @@ function switchTab(w){
 }
 $("#monthPick").addEventListener("change",renderMonth);
 $("#yearPick").addEventListener("change",renderYear);
+$("#monthHeatMode").addEventListener("change",()=>renderSalesHeatmap("month"));
+$("#yearHeatMode").addEventListener("change",()=>renderSalesHeatmap("year"));
+$("#yearHeatRange").addEventListener("change",()=>renderSalesHeatmap("year"));
 
 /* Accordion Logic */
 const savedToggle = $("#savedWeeksToggle");
@@ -547,7 +711,7 @@ $("#restoreFile").addEventListener("change",e=>{
       const incoming=data.weeks;
       if(Array.isArray(data.suppliers))suppliers=data.suppliers.filter(x=>typeof x==="string");await saveSuppliers();
       let n=0; for(const k in incoming){ const w=normalize(incoming[k]); weeks[w.start]=w; await store.set(STORE_PREFIX+w.start,w); n++; }
-      loadWeek(current.start); alert("Restored "+n+" week(s)."); }catch(err){ alert("Couldn't read that file."); } };
+      loadWeek(current.start); if($("#panelMonth").classList.contains("on")){updateYearOptions();renderMonth();renderYear();} alert("Restored "+n+" week(s)."); }catch(err){ alert("Couldn't read that file."); } };
   rd.readAsText(f); e.target.value="";
 });
 function download(name,type,text){ const b=new Blob([text],{type}); const a=document.createElement("a");
